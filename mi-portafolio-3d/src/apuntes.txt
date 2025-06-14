@@ -1,0 +1,28 @@
+// // Texto con troika
+// const text = new Text();
+// text.text = 'Diego Sandoval';
+// text.fontSize = 0.5;
+// text.position.set(2, 3, 0);
+// text.color = '#ffffff';
+// text.sync(); // <- importante
+// scene.add(text);
+
+// const transformControls = new TransformControls(camera, renderer.domElement);
+// transformControls.attach(text);
+// scene.add(transformControls.getHelper());
+
+
+// const axesHelper = new THREE.AxesHelper(5); // longitud en unidades
+// scene.add(axesHelper);
+
+// const gridHelper = new THREE.GridHelper(10, 10); // tamaño y divisiones
+// scene.add(gridHelper);
+
+// dirLight.shadow.mapSize.width = 1024;
+// dirLight.shadow.mapSize.height = 1024;
+// dirLight.shadow.camera.near = 0.5;
+// dirLight.shadow.camera.far = 20;
+
+
+// const directionalLightHelper = new THREE.DirectionalLightHelper(dirLight, 1);
+// scene.add(directionalLightHelper);
