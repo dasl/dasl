@@ -8,9 +8,8 @@ import * as CANNON from 'cannon-es';
 // @ts-ignore
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { AnimationMixer, Audio, AudioListener, AudioLoader } from 'three';
-import type { Const } from 'three/src/nodes/TSL.js';
-import { mix } from 'three/tsl';
-
+// @ts-ignore
+import cannonDebugger from 'cannon-es-debugger';
 
 
 const scene = new THREE.Scene();
@@ -32,6 +31,23 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap
 document.body.appendChild(renderer.domElement);
 
+
+// 🎧 Crear listener y asociarlo a la cámara
+const listener = new AudioListener();
+camera.add(listener);
+
+// 🎵 Crear objeto de audio global
+const backgroundMusic = new Audio(listener);
+
+// 📥 Cargar el archivo de música
+const audioLoader = new AudioLoader();
+audioLoader.load('/audio/music.ogg', (buffer) => {
+  backgroundMusic.setBuffer(buffer);
+  backgroundMusic.setLoop(true);
+  backgroundMusic.setVolume(0.5); // ajusta volumen de 0.0 a 1.0
+  backgroundMusic.play();
+});
+
 // Controles de órbita
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true; // suaviza el movimiento
@@ -46,12 +62,13 @@ scene.add(dirLight);
 
 // 🟫 Piso (visual)
 const floorGeometry = new THREE.BoxGeometry(10, 0.1, 10);
-const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x5CFC00 });
+const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x463403 });
 const floorMesh = new THREE.Mesh(floorGeometry, floorMaterial);
 floorMesh.position.set(0, -0.05, 0);
 floorMesh.receiveShadow = true;
 scene.add(floorMesh);
 
+// WORLD
 // 🌍 Mundo de físicas
 const world = new CANNON.World({
   gravity: new CANNON.Vec3(0, -9.82, 0)
@@ -74,16 +91,22 @@ addWall(0, 0.5, 5);  // Frente
 addWall(-5, 0.5, 0, Math.PI / 2); // Izquierda
 addWall(5, 0.5, 0, Math.PI / 2);  // Derechad
 
+////////////////////////////////////////////////////////////////////
+// 🚶‍♂️‍➡️ Personaje
 // Cargar modelo GLTF
+const wrapper = new THREE.Group();
 const loader = new GLTFLoader();
-let boxMesh: THREE.Mesh | null = null; // Inicializa como nulo
+let boxMesh: THREE.Group | null = null; // Inicializa como nulo
 loader.load('assets/Knight.glb', (gltf: any) => {
   const model = gltf.scene;
   model.scale.set(1, 1, 1); // Ajusta escala
   model.position.set(0, 0, 0); // Ajusta posición inicial
-  model.quaternion.setFromEuler(new THREE.Euler(0, Math.PI, 0)); // Orientación inicial
-  scene.add(model);
 
+  wrapper.add(model);
+  model.position.y = -1; 
+  wrapper.quaternion.setFromEuler(new THREE.Euler(0, Math.PI, 0)); 
+  scene.add(wrapper);
+  
   model.traverse((child: any) => {
     if (child instanceof THREE.Mesh) {
       child.castShadow = true;
@@ -91,25 +114,36 @@ loader.load('assets/Knight.glb', (gltf: any) => {
     }
   });
 
-
   animations = gltf.animations;
   mixer = new AnimationMixer(model);
   // console.log('Animaciones cargadas:', animations);
   // 🔥 Reproducir la primera animación como ejemplo
   const action = mixer.clipAction(animations[36]);
   action.play();
-  boxMesh = model;
+  boxMesh = wrapper;
 });
 
+const footStepSound = new AudioListener();
+camera.add(footStepSound);
+const footStep = new Audio(footStepSound);
+const footStepLoader = new AudioLoader();
+footStepLoader.load('audio/footstep.wav', (buffer) => {
+  footStep.setBuffer(buffer);
+  footStep.setLoop(true);
+  footStep.setVolume(0.3); // ajusta volumen de 0.0 a 1.0
+});
 
 // 🧱 Cuerpo físico del personaje
 const boxBody = new CANNON.Body({
   mass: 1, // dinámico
-  shape: new CANNON.Sphere(0.2) // forma del cubo,
+  shape: new CANNON.Box(new CANNON.Vec3(0.5, 1, 0.5)) // forma del cubo,
 });
 
+boxBody.fixedRotation = true;
+boxBody.updateMassProperties();
+
 // Si quieres usar un BoxGeometry en lugar de Sphere, usa:
-boxBody.position.set(0, 0, 0);
+boxBody.position.set(0, 0.5, 0);
 world.addBody(boxBody);
 
 
@@ -119,10 +153,10 @@ let animations: THREE.AnimationClip[] = [];
 const clock = new THREE.Clock();
 
 var canJump: boolean = true; // para saltar
-const speed: number = 5; // velocidad de movimiento
+const speed: number = 15; // velocidad de movimiento
 var cameraRecover: number = 0.0008;
-
-///////////////////////////////////////////////////////////////////
+let isGrounded = true; 
+////////////////////////////////////////////////////////////////////
 // Listener teclas
 const keysPressed: Record<string, boolean> = {};
 let spacePressed = false;
@@ -142,7 +176,7 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('keyup', (e) => {
   keysPressed[e.key.toLowerCase()] = false;
   if (e.key === ' ') spacePressed = false;
-  if (['a', 'd', 'w', 's'].includes(e.key.toLowerCase())) {
+  if (!keysPressed['w'] && !keysPressed['a'] && !keysPressed['s'] && !keysPressed['d'])  {
     cameraRecover = 0.0008; // Aumenta la velocidad de cámara al moversew
     playAnimation(36); // Reproduce la animación de reposo
   }
@@ -152,10 +186,15 @@ window.addEventListener('keyup', (e) => {
 boxBody.addEventListener('collide', (event: any) => {
   if (event.body === floorBody) {
     canJump = true;
+    isGrounded = true; // Se ha tocado el suelo
   }
 });
 
 
+
+const cannonDebug = cannonDebugger(scene, world);
+////////////////////////////////////////////////////////////////////
+// Animación y movimiento
 function animate() {
   requestAnimationFrame(animate);
 
@@ -170,7 +209,6 @@ function animate() {
   if (boxMesh) {
     controls.target.copy(boxMesh.position);
     boxMesh.position.copy(boxBody.position as any);
-    // boxMesh.quaternion.copy(boxBody.quaternion as any);
 
     if (spacePressed && canJump) {
       boxBody.wakeUp(); // Por si estaba dormido
@@ -179,15 +217,23 @@ function animate() {
       boxBody.applyImpulse(impulse, boxBody.position);
       canJump = false;
       spacePressed = false;
+      isGrounded = false; // Evita saltos múltiples
     }
 
-    const v = boxBody.velocity;
-    boxBody.velocity.set(
-      (keysPressed['a'] ? -speed : keysPressed['d'] ? speed : 0),
-      v.y,
-      (keysPressed['w'] ? -speed : keysPressed['s'] ? speed : 0)
-    );
+      const groundSpeed = 14;
+      const airSpeed = 6; // velocidad reducida en el aire
 
+      const v = boxBody.velocity;
+
+      // Decide velocidad según estado
+      const currentSpeed = isGrounded ? groundSpeed : airSpeed;
+
+      // Aplica velocidad horizontal
+      boxBody.velocity.set(
+        (keysPressed['a'] ? -currentSpeed : keysPressed['d'] ? currentSpeed : 0),
+        v.y,
+        (keysPressed['w'] ? -currentSpeed : keysPressed['s'] ? currentSpeed : 0)
+      );
     // 🧭 Rotación basada en input
     const direction = new THREE.Vector3();
 
@@ -207,13 +253,23 @@ function animate() {
       boxMesh.quaternion.slerp(targetQuaternion, 0.08); // Interpolación suave
     }
 
+    if (isMoving()) {
+      if (!footStep.isPlaying && footStep.buffer) {
+        footStep.play();
+      }
+    } else {
+      if (footStep.isPlaying) {
+        footStep.pause(); // o .stop() si quieres reiniciar siempre
+      }
+    }
+
     const offset = new THREE.Vector3(0, 5, 10); // altura y distancia detrás del cubo
     const targetPosition = new THREE.Vector3().copy(boxMesh.position).add(offset);
 
     camera.position.lerp(targetPosition, cameraRecover); // interpolación suave
     camera.lookAt(boxMesh.position);
   }
-
+  cannonDebug.update();
   renderer.render(scene, camera);
 }
 animate();
@@ -248,4 +304,8 @@ function playAnimation(index: number, fadeDuration = 0.2) {
     next.reset().fadeIn(fadeDuration).play();
     currentAction = next;
   }
+}
+
+function isMoving(): boolean {
+  return canJump && (keysPressed['w'] || keysPressed['a'] || keysPressed['s'] || keysPressed['d']);
 }
