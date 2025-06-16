@@ -27,6 +27,7 @@ camera.position.set(5, 5, 5); // posición de la cámara
 // Crear renderer
 const renderer: THREE.WebGLRenderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.NoToneMapping;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap
 document.body.appendChild(renderer.domElement);
@@ -55,8 +56,8 @@ controls.dampingFactor = 0.05;
 
 // 💡 Luces
 // scene.add(new THREE.AmbientLight(0xffffff, 0.001));s
-const dirLight = new THREE.DirectionalLight(0xffffff, 0.2);
-dirLight.position.set(10, 10, 10);
+const dirLight = new THREE.PointLight(0xffffff, 44);
+dirLight.position.set(5, 5, 5);
 dirLight.castShadow = true;
 scene.add(dirLight);
 
@@ -86,10 +87,7 @@ world.addBody(floorBody);
 
 // 🧱 Paredes
 // Paredes alrededor del piso
-addWall(0, 0.5, -5); // Fondo
-addWall(0, 0.5, 5);  // Frente
-addWall(-5, 0.5, 0, Math.PI / 2); // Izquierda
-addWall(5, 0.5, 0, Math.PI / 2);  // Derechad
+let walls = [addWall(0, 0.5, -5), addWall(0, 0.5, 5), addWall(-5, 0.5, 0, Math.PI / 2), addWall(5, 0.5, 0, Math.PI / 2)] // Fondo
 
 ////////////////////////////////////////////////////////////////////
 // 🚶‍♂️‍➡️ Personaje
@@ -106,15 +104,21 @@ loader.load('assets/Knight.glb', (gltf: any) => {
   model.position.y = -1; 
   wrapper.quaternion.setFromEuler(new THREE.Euler(0, Math.PI, 0)); 
   scene.add(wrapper);
-  
+
   model.traverse((child: any) => {
     if (child instanceof THREE.Mesh) {
       child.castShadow = true;
       child.receiveShadow = true;
+      child.geometry.computeVertexNormals?.();
+      child.material.depthWrite = true;
+      child.material.needsUpdate = true;
+      child.material.side = THREE.FrontSide;
+
     }
   });
 
   animations = gltf.animations;
+    console.log(animations)
   mixer = new AnimationMixer(model);
   // console.log('Animaciones cargadas:', animations);
   // 🔥 Reproducir la primera animación como ejemplo
@@ -143,7 +147,7 @@ boxBody.fixedRotation = true;
 boxBody.updateMassProperties();
 
 // Si quieres usar un BoxGeometry en lugar de Sphere, usa:
-boxBody.position.set(0, 0.5, 0);
+boxBody.position.set(0, 1, 0);
 world.addBody(boxBody);
 
 
@@ -175,8 +179,11 @@ window.addEventListener('keydown', (e) => {
 
 window.addEventListener('keyup', (e) => {
   keysPressed[e.key.toLowerCase()] = false;
-  if (e.key === ' ') spacePressed = false;
-  if (!keysPressed['w'] && !keysPressed['a'] && !keysPressed['s'] && !keysPressed['d'])  {
+  if (e.key === ' '){
+    spacePressed = false;
+    playAnimation(40, -0.4); // Reproduce la animación de reposo
+  } 
+  else if (!keysPressed['w'] && !keysPressed['a'] && !keysPressed['s'] && !keysPressed['d'])  {
     cameraRecover = 0.0008; // Aumenta la velocidad de cámara al moversew
     playAnimation(36); // Reproduce la animación de reposo
   }
@@ -184,9 +191,10 @@ window.addEventListener('keyup', (e) => {
 
 
 boxBody.addEventListener('collide', (event: any) => {
-  if (event.body === floorBody) {
+  if (event.body === floorBody || walls.includes(event.body)) {
     canJump = true;
     isGrounded = true; // Se ha tocado el suelo
+    playAnimation(36);
   }
 });
 
@@ -221,7 +229,7 @@ function animate() {
     }
 
       const groundSpeed = 14;
-      const airSpeed = 6; // velocidad reducida en el aire
+      const airSpeed = 4; // velocidad reducida en el aire
 
       const v = boxBody.velocity;
 
@@ -269,7 +277,7 @@ function animate() {
     camera.position.lerp(targetPosition, cameraRecover); // interpolación suave
     camera.lookAt(boxMesh.position);
   }
-  cannonDebug.update();
+  // cannonDebug.update();
   renderer.render(scene, camera);
 }
 animate();
@@ -290,6 +298,7 @@ function addWall(x: number, y: number, z: number, rotY: number = 0) {
   wallBody.position.set(x, y, z);
   wallBody.quaternion.setFromEuler(0, rotY, 0);
   world.addBody(wallBody);
+  return wallBody
 }
 
 let currentAction: THREE.AnimationAction | null = null;
