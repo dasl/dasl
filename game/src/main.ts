@@ -10,9 +10,10 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { AnimationMixer, Audio, AudioListener, AudioLoader } from 'three';
 // @ts-ignore
 import cannonDebugger from 'cannon-es-debugger';
-
+import { ZoneManager } from './ZoneManager'
 
 const scene = new THREE.Scene();
+const zoneManager = new ZoneManager(scene)
 scene.background = new THREE.Color(0x000000); //
 
 // Crear cámara
@@ -157,13 +158,13 @@ let animations: THREE.AnimationClip[] = [];
 const clock = new THREE.Clock();
 
 var canJump: boolean = true; // para saltar
-const speed: number = 15; // velocidad de movimiento
 var cameraRecover: number = 0.0008;
 let isGrounded = true; 
 ////////////////////////////////////////////////////////////////////
 // Listener teclas
 const keysPressed: Record<string, boolean> = {};
 let spacePressed = false;
+let interactionReady = true;
 
 
 window.addEventListener('keydown', (e) => {
@@ -179,8 +180,9 @@ window.addEventListener('keydown', (e) => {
 
 window.addEventListener('keyup', (e) => {
   keysPressed[e.key.toLowerCase()] = false;
+  
   if (e.key === ' '){
-    spacePressed = false;
+    spacePressed = false; // Resetea el salto
     playAnimation(40, -0.4); // Reproduce la animación de reposo
   } 
   else if (!keysPressed['w'] && !keysPressed['a'] && !keysPressed['s'] && !keysPressed['d'])  {
@@ -198,6 +200,13 @@ boxBody.addEventListener('collide', (event: any) => {
   }
 });
 
+zoneManager.addZone({
+  position: new THREE.Vector3(1, 1, 1),
+  size: new THREE.Vector3(2, 2, 2),
+  label: 'Presiona E para abrir',
+  htmlContent: '<strong>¡Bienvenido!</strong><br>Puedes presionar <kbd>E</kbd> para interactuar.',
+  action: () => console.log('Interacción realizada')
+})
 
 
 const cannonDebug = cannonDebugger(scene, world);
@@ -205,7 +214,7 @@ const cannonDebug = cannonDebugger(scene, world);
 // Animación y movimiento
 function animate() {
   requestAnimationFrame(animate);
-
+  zoneManager.update(boxBody.position, keysPressed)
   controls.update();
 
   // ⏱️ Paso de física
@@ -213,18 +222,16 @@ function animate() {
   world.step(1 / 60, delta);
   if (mixer) mixer.update(delta);
 
-
   if (boxMesh) {
     controls.target.copy(boxMesh.position);
     boxMesh.position.copy(boxBody.position as any);
 
     if (spacePressed && canJump) {
-      boxBody.wakeUp(); // Por si estaba dormido
+      // boxBody.wakeUp(); // Por si estaba dormido
       boxBody.velocity.set(0, boxBody.velocity.y, 0); // Anula movimiento lateral
       const impulse = new CANNON.Vec3(0, 5, 0); // fuerza vertical
       boxBody.applyImpulse(impulse, boxBody.position);
       canJump = false;
-      spacePressed = false;
       isGrounded = false; // Evita saltos múltiples
     }
 
